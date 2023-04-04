@@ -1,13 +1,16 @@
 /*
  *  ======== gtz.c ========
- */    
+ */
 
 #include <xdc/std.h>
 #include <xdc/runtime/System.h>
-#include <ti/sysbios/hal/Hwi.h>
+
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Task.h>
+
+#include <xdc/runtime/Types.h>
+#include <xdc/runtime/Timestamp.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -15,148 +18,123 @@
 #include <math.h>
 #include "gtz.h"
 
-void clk_SWI_Generate_DTMF(UArg arg0);
-void clk_SWI_GTZ_0697Hz(UArg arg0);
+void clk_SWI_Read_Data(UArg arg0);
+void clk_SWI_GTZ_All_Freq(UArg arg0);
 
 extern void task0_dtmfGen(void);
 extern void task1_dtmfDetect(void);
 
-extern char digit;
-extern int sample, mag1, mag2, freq1, freq2, gtz_out[8];
+extern int sample, tdiff, tdiff_final, gtz_out[8];
 extern short coef[8];
+extern int flag;
 
-
+short data[NO_OF_SAMPLES];
+short *buffer;
 
 /*
  *  ======== main ========
  */
-void main(void)
-{
-
-
-	System_printf("\n I am in main :\n");
+int main() {
+	System_printf("\n System Start\n");
 	System_flush();
+
+	/* Read binary data file */
+	FILE* fp = fopen("../data.bin", "rb");
+	if(fp==0) {
+		System_printf("Error: Data file not found\n");
+		System_flush();
+		return 1;
+	}
+	fread(data, 2, NO_OF_SAMPLES, fp);
+	buffer = (short*)malloc(2*8*10000);
+
 	/* Create a Clock Instance */
-    Clock_Params clkParams;
+	Clock_Params clkParams;
 
-    /* Initialise Clock Instance with time period and timeout (system ticks) */
-    Clock_Params_init(&clkParams);
-    clkParams.period = 1;
-    clkParams.startFlag = TRUE;
+	/* Initialise Clock Instance with time period and timeout (system ticks) */
+	Clock_Params_init(&clkParams);
+	clkParams.period = 1;
+	clkParams.startFlag = TRUE;
 
-    /* Instantiate ISR for tone generation  */
-	Clock_create(clk_SWI_Generate_DTMF, TIMEOUT, &clkParams, NULL);
+	/* Instantiate ISR for tone generation  */
+	Clock_create(clk_SWI_Read_Data, TIMEOUT, &clkParams, NULL);
 
-    /* Instantiate 8 parallel ISRs for each of the eight Goertzel coefficients */
-	Clock_create(clk_SWI_GTZ_0697Hz, TIMEOUT, &clkParams, NULL);
-
-	mag1 = 32768.0; mag2 = 32768.0; freq1 = 697; // I am setting freq1 = 697Hz to test my GTZ algorithm with one frequency.
+	/* Instantiate 8 parallel ISRs for each of the eight Goertzel coefficients */
+	Clock_create(clk_SWI_GTZ_All_Freq, TIMEOUT, &clkParams, NULL);
 
 	/* Start SYS_BIOS */
-    BIOS_start();
+	BIOS_start();
 }
 
 /*
- *  ====== clk0Fxn =====
+ *  ====== clk_SWI_Generate_DTMF =====
  *  Dual-Tone Generation
- *  ====================
+ *  ==================================
  */
-void clk_SWI_Generate_DTMF(UArg arg0)
-{
+void clk_SWI_Read_Data(UArg arg0) {
 	static int tick;
-
-
 	tick = Clock_getTicks();
-
-//	sample = (int) 32768.0*sin(2.0*PI*freq1*TICK_PERIOD*tick) + 32768.0*sin(2.0*PI*freq2*TICK_PERIOD*tick);
-	sample = (int) 32768.0*sin(2.0*PI*freq1*TICK_PERIOD*tick) + 32768.0*sin(2.0*PI*0*TICK_PERIOD*tick);
-	sample = sample >>12;
+	sample = data[tick%NO_OF_SAMPLES];
 }
 
 /*
  *  ====== clk_SWI_GTZ =====
  *  gtz sweep
- *  ====================
+ *  ========================
  */
-void clk_SWI_GTZ_0697Hz(UArg arg0)
-{
-  // 	static int N = 0;
-  // 	static int Goertzel_Value = 0;
+void clk_SWI_GTZ_All_Freq(UArg arg0) {
+	// define variables for timing
+	static int start, stop;
 
-   	//static short delay;
-  // 	static short delay_1 = 0;
-  // 	static short delay_2 = 0;
+	// define feedback times as N
+	static int N = 0;
 
-  // 	int prod1, prod2, prod3;
+   	//Record start time
+	start = Timestamp_get32();
 
-   //	short input, coef_1;
+	static int Goertzel_Value = 0;
+	short input = (short) (sample);
 
+	/* TODO 1. Complete the feedback loop of the GTZ algorithm*/
+	/* ========================= */
+	for (int k = 0; k < 8; k++) {
+	    int Q2 = 0;
+	    int Q1 = 0;
+	    int Q0 = 0;
 
-// to be completed
+	    Q0 = (coef[k] * Q1 >> 14) - Q2 + input;
+	    Q2 = Q1;
+	    Q1 = Q0;
+	}
 
+	/* ========================= */
+	N++;
 
-    //	gtz_out[0] = Goertzel_Value;
+	//Record stop time
+	stop = Timestamp_get32();
+	//Record elapsed time
+	tdiff = stop-start;
 
-    static int n = 0;
-    static int32_t Goertzel_Value = 0;
-  //  static int loop_counter = 0;
-  //  int task1_loop_counter = 0;
-    static int16_t delay;
-    static int16_t delay_1 = 0;
-    static int16_t delay_2 = 0;
+	if (N == 206) {
+	   	//Record start time
+		start = Timestamp_get32();
 
-    int32_t prod1, prod2, prod3;
-
-    int16_t input, coef_1;
-
-    	    // Calculate the Goertzel coefficient for the target frequency
-   // float omega = 2 * PI * 697 / SAMPLING_RATE;
-    int16_t coef = 2* 0x6D02    ;//(int16_t)(32768.0 * 2.0 * cos(omega));
-
-    	    // Get the input sample
-    input = (int16_t)sample;
-
-    	    // Implement the Goertzel algorithm
-    delay = input + ((coef * delay_1) >> 14) - delay_2;
-    delay_2 = delay_1;
-    delay_1 = delay;
-
-    	    // Increment the sample count
-    n++;
-
-    	    // After processing N_SAMPLES, calculate the Goertzel value (magnitude squared)
-	if (n == 206)
-	{
-		prod1 = (int32_t)delay_1 * (int32_t)delay_1;
-		prod2 = (int32_t)delay_2 * (int32_t)delay_2;
-		prod3 = (int32_t)coef * (int32_t)delay_1 * (int32_t)delay_2;
-
-		Goertzel_Value = (prod1 + prod2 - (prod3 >> 14)) >> 8;
-
-		// Reset the variables for the next run
-		n = 0;
-		delay_1 = 0;
-		delay_2 = 0;
-
-		//loop_counter++;
-
-
-	//	if (loop_counter >= 10)
-			   // {
-			        // Stop the clock instance
-			//       Clock_stop((Clock_Handle)arg0);
-			//    }
+		/* TODO 2. Complete the feedforward loop of the GTZ algorithm*/
+		/* ========================= */
+		for (int k = 0; k < 8; k++) {
+		    int Q1_square = (Q1 * Q1) >> 14;
+		    int Q2_square = (Q2 * Q2) >> 14;
+		    int Q1Q2_coef = (Q1 * Q2 * coef[k]) >> 28;
+		    gtz_out[k] = (Q1_square + Q2_square - Q1Q2_coef) >> 2;
 		}
+		/* gtz_out[..] = ... */
+		/* ========================= */
+		flag = 1;
+		N = 0;
 
-
-
-	// Store the Goertzel value in the gtz_out array at index 0
-	gtz_out[0] = Goertzel_Value;
-	//loop_counter++;
-	//if (loop_counter >= 10)
-	  //  {
-	    //    // Stop the clock instance
-	      //  Clock_stop((Clock_Handle)arg0);
-	    //}
+		//Record stop time
+		stop = Timestamp_get32();
+		//Record elapsed time
+		tdiff_final = stop-start;
+	}
 }
-
