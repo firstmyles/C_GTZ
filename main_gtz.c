@@ -95,16 +95,19 @@ void clk_SWI_GTZ_All_Freq(UArg arg0) {
 	static int Goertzel_Value = 0;
 	short input = (short) (sample);
 
+
 	/* TODO 1. Complete the feedback loop of the GTZ algorithm*/
 	/* ========================= */
-	for (int k = 0; k < 8; k++) {
-	    int Q2 = 0;
-	    int Q1 = 0;
-	    int Q0 = 0;
 
-	    Q0 = (coef[k] * Q1 >> 14) - Q2 + input;
-	    Q2 = Q1;
-	    Q1 = Q0;
+	int Q2[8] = {0};
+	int Q1[8] = {0};
+	int Q0;
+
+	int k;
+	for (k = 0; k < 8; k++) {
+	    Q0 = input + (short)((coef[k] * Q1[k]) >> 14) - Q2[k];
+	    Q2[k] = Q1[k];
+	    Q1[k] = Q0;
 	}
 
 	/* ========================= */
@@ -121,10 +124,12 @@ void clk_SWI_GTZ_All_Freq(UArg arg0) {
 
 		/* TODO 2. Complete the feedforward loop of the GTZ algorithm*/
 		/* ========================= */
-		for (int k = 0; k < 8; k++) {
-		    int Q1_square = (Q1 * Q1) >> 14;
-		    int Q2_square = (Q2 * Q2) >> 14;
-		    int Q1Q2_coef = (Q1 * Q2 * coef[k]) >> 28;
+		int Q1_square, Q2_square, Q1Q2_coef;
+		int k;
+		for (k = 0; k < 8; k++) {
+		    Q1_square = (Q1[k] * Q1[k]) >> 14;
+		    Q2_square = (Q2[k] * Q2[k]) >> 14;
+		    Q1Q2_coef = (Q1[k] * Q2[k] * coef[k]) >> 28;
 		    gtz_out[k] = (Q1_square + Q2_square - Q1Q2_coef) >> 2;
 		}
 		/* gtz_out[..] = ... */

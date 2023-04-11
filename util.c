@@ -72,13 +72,36 @@ void task2_dtmfGenerate(char* keys)
 	int samples_total = samples_per_tone * n_tones;
 	int i, n;
 	char digit;
+
+	float row_freqs[4] = {697, 770, 852, 941};
+	float col_freqs[4] = {1209, 1336, 1477, 1633};
+	char pad[4][4] = {{'1','2','3','A'},{'4','5','6','B'},{'7','8','9','C'},{'*','0','#','D'}};
+
+
 	for(n=0;n<n_tones;n++) {
 		digit = keys[n];
-		/* TODO 4. Complete the DTMF algorithm to generate audio signal based on the digits */
-		/* ========================= */
+		int row, col;
 
-		/* buffer[..] = ... */
-		/* ========================= */
+		        for (row = 0; row < 4; row++) {
+		            for (col = 0; col < 4; col++) {
+		                if (pad[row][col] == digit) {
+		                    break;
+		                }
+		            }
+		            if (col < 4) {
+		                break;
+		            }
+		        }
+
+		        float row_freq = row_freqs[row];
+		        float col_freq = col_freqs[col];
+
+		        for (i = 0; i < samples_per_tone; i++) {
+		            float t = (float)i / fs;
+		            float row_val = sin(2.0 * PI * row_freq * t);
+		            float col_val = sin(2.0 * PI * col_freq * t);
+		            buffer[n * samples_per_tone + i] = (short)((row_val + col_val) * 0.5 * 32767);
+		        }
 	}
 
 	/* Writing the data to a wav file */
